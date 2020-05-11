@@ -1,6 +1,6 @@
 # Gulp Boilerplate [![Build Status](https://travis-ci.org/cferdinandi/gulp-boilerplate.svg)](https://travis-ci.org/cferdinandi/gulp-boilerplate)
 
-> ## My Changes To Forked Version
+> **My changes to forked version**
 > 
 > - Nunjucks build
 > - Separate src/js/libs/ build
