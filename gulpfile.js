@@ -5,10 +5,12 @@
 
 var settings = {
 	clean: true,
+	html: true,
 	scripts: true,
-	polyfills: true,
+	libs: true,
+	polyfills: false,
 	styles: true,
-	svgs: true,
+	svgs: false,
 	copy: true,
 	reload: true
 };
@@ -21,9 +23,17 @@ var settings = {
 var paths = {
 	input: 'src/',
 	output: 'dist/',
+	njk: {
+		input: 'src/njk/*.html',
+		output: 'dist/'
+	},
 	scripts: {
-		input: 'src/js/*',
+		input: ['src/js/*', '!src/js/libs/**'],
 		polyfills: '.polyfill.js',
+		output: 'dist/js/'
+	},
+	libs: {
+		input: 'src/js/libs/**',
 		output: 'dist/js/'
 	},
 	styles: {
@@ -69,6 +79,11 @@ var lazypipe = require('lazypipe');
 var rename = require('gulp-rename');
 var header = require('gulp-header');
 var package = require('./package.json');
+var hash = require('gulp-hash-filename');
+
+// Html
+var nunjucks = require('gulp-nunjucks');
+var inject = require('gulp-inject');
 
 // Scripts
 var jshint = require('gulp-jshint');
@@ -76,6 +91,8 @@ var stylish = require('jshint-stylish');
 var concat = require('gulp-concat');
 var uglify = require('gulp-terser');
 var optimizejs = require('gulp-optimize-js');
+var gulp = require('gulp');
+var babel = require('gulp-babel');
 
 // Styles
 var sass = require('gulp-sass');
@@ -112,13 +129,13 @@ var cleanDist = function (done) {
 
 // Repeated JavaScript tasks
 var jsTasks = lazypipe()
-	.pipe(header, banner.main, {package: package})
+	.pipe(babel)
 	.pipe(optimizejs)
 	.pipe(dest, paths.scripts.output)
+	.pipe(hash)
 	.pipe(rename, {suffix: '.min'})
 	.pipe(uglify)
 	.pipe(optimizejs)
-	.pipe(header, banner.main, {package: package})
 	.pipe(dest, paths.scripts.output);
 
 // Lint, minify, and concatenate scripts
@@ -180,6 +197,21 @@ var lintScripts = function (done) {
 
 };
 
+// Concat libs
+var concatLibs = function (done) {
+
+	// Make sure this feature is activated before running
+	if (!settings.libs) return done();
+
+	// Concat libs
+	return src(paths.libs.input)
+		.pipe(concat('libs.js'))
+		.pipe(hash())
+		.pipe(rename({suffix: '.min'}))
+		.pipe(dest(paths.libs.output));
+
+};
+
 // Process, lint, and minify Sass files
 var buildStyles = function (done) {
 
@@ -198,8 +230,9 @@ var buildStyles = function (done) {
 				remove: true
 			})
 		]))
-		.pipe(header(banner.main, {package: package}))
+		// .pipe(header(banner.main, {package: package}))
 		.pipe(dest(paths.styles.output))
+		.pipe(hash())
 		.pipe(rename({suffix: '.min'}))
 		.pipe(postcss([
 			minify({
@@ -223,6 +256,33 @@ var buildSVGs = function (done) {
 		.pipe(svgmin())
 		.pipe(dest(paths.svgs.output));
 
+};
+
+// Copy static files into output folder
+var buildNjk = function (done) {
+
+	// Make sure this feature is activated before running
+	if (!settings.html) return done();
+
+	// Compile nunjucks to html
+	return src(paths.njk.input)
+		.pipe(nunjucks.compile())
+		// .pipe(rename({extname: '.html'}))
+		.pipe(dest(paths.njk.output));
+
+};
+
+// Inject css and js
+var injectCssJs = function (done) {
+
+	// Make sure this feature is activated before running
+	if (!settings.html) return done();
+
+	var target = gulp.src('./dist/*.html');
+	var sources = gulp.src(['./dist/js/*.min.js', './dist/css/*.min.css'], {read: false});
+
+	return target.pipe(inject(sources, {relative: true}))
+		.pipe(gulp.dest('./dist'));
 };
 
 // Copy static files into output folder
@@ -278,12 +338,15 @@ var watchSource = function (done) {
 exports.default = series(
 	cleanDist,
 	parallel(
+		buildNjk,
 		buildScripts,
+		concatLibs,
 		lintScripts,
 		buildStyles,
 		buildSVGs,
 		copyFiles
-	)
+	),
+	injectCssJs
 );
 
 // Watch and reload
